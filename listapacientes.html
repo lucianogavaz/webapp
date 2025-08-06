@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zavtech Dicom Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-image: linear-gradient(to top, #f3e7e9 0%, #e3eeff 99%, #e3eeff 100%);
+            color: #1e293b;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        input:focus, select:focus {
+            --tw-ring-color: #2563eb;
+        }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
+        .modal-content { background-color: #fefefe; margin: auto; padding: 20px; border: 1px solid #888; width: 90%; max-width: 800px; border-radius: 8px; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 10px; }
+        .close-btn { color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .dicom-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; max-height: 60vh; display: block; overflow-y: auto; }
+        .dicom-table th, .dicom-table td { padding: 8px; border: 1px solid #ddd; }
+        .dicom-table th { background-color: #f2f2f2; position: sticky; top: 0; }
+        .dicom-table td:first-child { font-weight: bold; }
+    </style>
+</head>
+<body class="antialiased">
+    <!-- Script de Proteção de Página -->
+    <script>
+        if (!localStorage.getItem('authToken')) {
+            const currentUrl = window.location.href;
+            const newUrl = currentUrl.substring(0, currentUrl.lastIndexOf('/') + 1) + 'login.html';
+            window.location.href = newUrl;
+        }
+    </script>
+
+    <div class="container mx-auto max-w-5xl p-4 sm:p-6 lg:p-8">
+        <header class="mb-10 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <svg class="h-12 w-12" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <defs><linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#3b82f6"/></linearGradient></defs>
+                    <circle cx="50" cy="50" r="50" fill="url(#logoGradient)"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Inter, sans-serif" font-size="40" font-weight="bold" fill="white">ZT</text>
+                </svg>
+                <div>
+                    <h1 class="text-3xl font-bold text-slate-800">Zavtech</h1>
+                    <p class="text-slate-500 text-sm">Portal de Estudos DICOM</p>
+                </div>
+            </div>
+            <button id="logout-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2">
+                <i class="fa-solid fa-sign-out-alt"></i> Sair
+            </button>
+        </header>
+
+        <div class="mb-8 p-6 bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg border border-slate-200">
+             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                    <label for="search-input" class="block text-sm font-medium text-slate-600 mb-2">Pesquisar Paciente</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3"><i class="fa-solid fa-search text-slate-400"></i></span>
+                        <input type="text" id="search-input" placeholder="Nome ou ID..." class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2">
+                    </div>
+                </div>
+                <div>
+                    <label for="modality-filter" class="block text-sm font-medium text-slate-600 mb-2">Modalidade</label>
+                    <select id="modality-filter" class="w-full pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2">
+                        <option value="">Todas</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="date-filter" class="block text-sm font-medium text-slate-600 mb-2">Data do Exame</label>
+                    <input type="date" id="date-filter" class="w-full pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2">
+                </div>
+            </div>
+        </div>
+
+        <main id="patient-list-container">
+            <div id="loading-state" class="text-center py-10">
+                <i class="fa-solid fa-spinner fa-spin text-4xl text-blue-500"></i>
+                <p class="mt-3 text-slate-500">A carregar estudos...</p>
+            </div>
+            <div id="empty-state" class="hidden text-center py-10 bg-white rounded-xl border border-slate-200">
+                 <i class="fa-solid fa-folder-open text-4xl text-slate-400"></i>
+                <p class="mt-3 text-slate-500">Nenhum paciente encontrado com os filtros selecionados.</p>
+            </div>
+            <div id="patient-list" class="space-y-5"></div>
+        </main>
+
+        <footer id="pagination-controls" class="hidden mt-8 flex items-center justify-between">
+            <button id="prev-page-btn" class="pagination-btn bg-white border border-slate-300 text-slate-700 font-medium py-2 px-4 rounded-lg inline-flex items-center gap-2 hover:bg-slate-50 transition-colors">
+                <i class="fa-solid fa-arrow-left"></i> Anterior
+            </button>
+            <span id="page-info" class="text-sm font-semibold text-slate-600"></span>
+            <button id="next-page-btn" class="pagination-btn bg-white border border-slate-300 text-slate-700 font-medium py-2 px-4 rounded-lg inline-flex items-center gap-2 hover:bg-slate-50 transition-colors">
+                Próxima <i class="fa-solid fa-arrow-right"></i>
+            </button>
+        </footer>
+    </div>
+    
+    <!-- Modais -->
+    <div id="details-modal" class="modal"></div>
+    <div id="report-modal" class="modal"></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const authToken = localStorage.getItem('authToken');
+            if (!authToken) {
+                const currentUrl = window.location.href;
+                const newUrl = currentUrl.substring(0, currentUrl.lastIndexOf('/') + 1) + 'login.html';
+                window.location.href = newUrl;
+                return;
+            }
+
+            const patientListDiv = document.getElementById('patient-list');
+            const loadingState = document.getElementById('loading-state');
+            const emptyState = document.getElementById('empty-state');
+            const searchInput = document.getElementById('search-input');
+            const modalityFilter = document.getElementById('modality-filter');
+            const dateFilter = document.getElementById('date-filter');
+            
+            const paginationControls = document.getElementById('pagination-controls');
+            const prevPageBtn = document.getElementById('prev-page-btn');
+            const nextPageBtn = document.getElementById('next-page-btn');
+            const pageInfo = document.getElementById('page-info');
+
+            let allStudiesData = [];
+            let currentPage = 1;
+            const patientsPerPage = 10;
+            
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                localStorage.removeItem('authToken');
+                const currentUrl = window.location.href;
+                const newUrl = currentUrl.substring(0, currentUrl.lastIndexOf('/') + 1) + 'login.html';
+                window.location.href = newUrl;
+            });
+
+            const fetchWithAuth = (url) => {
+                return fetch(url, {
+                    headers: { 'Authorization': `Basic ${authToken}` }
+                });
+            };
+
+            const openInOhif = (studyInstanceUids) => {
+                if (!studyInstanceUids || studyInstanceUids === 'undefined') {
+                    alert('Este paciente não tem estudos com StudyInstanceUID para serem abertos no visualizador.');
+                    return;
+                }
+                const ohifUrl = `http://192.168.0.13:8042/ohif/viewer?StudyInstanceUIDs=${studyInstanceUids}`;
+                window.open(ohifUrl, '_blank');
+            };
+
+            const renderPatientList = (patients) => {
+                patientListDiv.innerHTML = '';
+                if (Object.keys(patients).length === 0) {
+                    emptyState.classList.remove('hidden');
+                    paginationControls.classList.add('hidden');
+                    return;
+                }
+                emptyState.classList.add('hidden');
+                paginationControls.classList.remove('hidden');
+
+                for (const patientId in patients) {
+                    const patientData = patients[patientId];
+                    const patientStudies = patientData.studies;
+                    const patientName = patientData.name;
+
+                    const card = document.createElement('div');
+                    card.className = 'patient-card bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden fade-in';
+                    
+                    let studiesHtml = '';
+                    patientStudies.forEach(study => {
+                        studiesHtml += `<div class="study-item flex items-center justify-between p-4 border-t border-slate-100"><div class="study-content"><p class="font-semibold text-slate-800">${study.type || 'Sem descrição'} <span class="text-xs font-medium text-blue-700 bg-blue-100 px-2 py-1 rounded-full">${study.modality}</span></p><p class="text-sm text-slate-500">${study.date}</p></div></div>`;
+                    });
+
+                    const allUidsForPatient = patientStudies.map(s => s.studyInstanceUid).filter(Boolean).join(',');
+                    const headerHtml = `
+                        <div class="card-header bg-gradient-to-r from-slate-50 to-slate-100 p-5 flex justify-between items-center cursor-pointer">
+                            <span class="font-bold text-lg text-slate-800">${patientName}</span>
+                            <div class="flex items-center gap-4">
+                                <button title="Abrir Dicom Viewer" class="viewer-btn bg-blue-600 hover:bg-blue-700 text-white font-bold h-10 w-10 rounded-full inline-flex items-center justify-center transition-all duration-300 transform hover:scale-110" data-study-uids="${allUidsForPatient}">
+                                    <i class="fa-solid fa-eye"></i>
+                                </button>
+                                <i class="fas fa-chevron-down icon transition-transform"></i>
+                            </div>
+                        </div>`;
+
+                    card.innerHTML = `${headerHtml}<div class="card-body max-h-0 overflow-hidden transition-all duration-500 ease-in-out">${studiesHtml.replace('border-t', '')}</div>`;
+                    patientListDiv.appendChild(card);
+
+                    card.querySelector('.card-header').addEventListener('click', (e) => {
+                        if (e.target.closest('.viewer-btn')) return;
+                        const cardBody = e.currentTarget.nextElementSibling;
+                        const icon = e.currentTarget.querySelector('.icon');
+                        if (cardBody.style.maxHeight && cardBody.style.maxHeight !== '0px') {
+                            cardBody.style.maxHeight = '0px'; icon.classList.remove('rotate-180');
+                        } else {
+                            cardBody.style.maxHeight = cardBody.scrollHeight + 'px'; icon.classList.add('rotate-180');
+                        }
+                    });
+                    
+                    card.querySelector('.viewer-btn').addEventListener('click', (e) => { e.stopPropagation(); openInOhif(e.currentTarget.dataset.studyUids); });
+                }
+            };
+            
+            const applyFiltersAndPagination = () => {
+                const searchTerm = searchInput.value.toLowerCase();
+                const modality = modalityFilter.value;
+                const date = dateFilter.value.replace(/-/g, '');
+
+                const filteredStudies = allStudiesData.filter(study => {
+                    const patientMatch = study.patientName.toLowerCase().includes(searchTerm) || study.patientId.toLowerCase().includes(searchTerm);
+                    const modalityMatch = !modality || study.modality === modality;
+                    const dateMatch = !date || study.date === date;
+                    return patientMatch && modalityMatch && dateMatch;
+                });
+
+                const patients = filteredStudies.reduce((acc, study) => {
+                    const patientIdentifier = study.patientId;
+                    if (!acc[patientIdentifier]) {
+                        acc[patientIdentifier] = { name: study.patientName, studies: [] };
+                    }
+                    acc[patientIdentifier].studies.push(study);
+                    return acc;
+                }, {});
+
+                const patientIds = Object.keys(patients);
+                const totalPages = Math.ceil(patientIds.length / patientsPerPage);
+                
+                if (currentPage > totalPages && totalPages > 0) { currentPage = totalPages; }
+
+                const paginatedPatientIds = patientIds.slice((currentPage - 1) * patientsPerPage, currentPage * patientsPerPage);
+                
+                const paginatedPatients = {};
+                paginatedPatientIds.forEach(id => { paginatedPatients[id] = patients[id]; });
+
+                renderPatientList(paginatedPatients);
+                
+                pageInfo.textContent = `Página ${currentPage} de ${totalPages || 1}`;
+                prevPageBtn.disabled = currentPage === 1;
+                nextPageBtn.disabled = currentPage === totalPages || totalPages === 0;
+            };
+
+            [searchInput, modalityFilter, dateFilter].forEach(el => {
+                el.addEventListener('input', () => {
+                    currentPage = 1;
+                    applyFiltersAndPagination();
+                });
+            });
+
+            prevPageBtn.addEventListener('click', () => {
+                if (currentPage > 1) { currentPage--; applyFiltersAndPagination(); }
+            });
+            nextPageBtn.addEventListener('click', () => {
+                currentPage++;
+                applyFiltersAndPagination();
+            });
+
+            fetchWithAuth('http://localhost:3000/api/studies')
+                .then(res => {
+                    if (res.status === 401) {
+                        localStorage.removeItem('authToken');
+                        const currentUrl = window.location.href;
+                        const newUrl = currentUrl.substring(0, currentUrl.lastIndexOf('/') + 1) + 'login.html';
+                        window.location.href = newUrl;
+                    }
+                    if (!res.ok) throw new Error(`Erro na rede: ${res.status}`);
+                    return res.json();
+                })
+                .then(studies => {
+                    loadingState.classList.add('hidden');
+                    allStudiesData = studies;
+                    
+                    const modalities = [...new Set(studies.map(s => s.modality).filter(m => m !== 'N/A'))];
+                    modalities.sort().forEach(modality => {
+                        const option = document.createElement('option');
+                        option.value = modality;
+                        option.textContent = modality;
+                        modalityFilter.appendChild(option);
+                    });
+
+                    applyFiltersAndPagination();
+                })
+                .catch(error => {
+                    loadingState.classList.add('hidden');
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'text-center py-10 bg-red-50 text-red-700 rounded-lg';
+                    errorDiv.innerHTML = `<i class="fa-solid fa-circle-exclamation text-3xl"></i><p class="mt-2">Erro ao carregar a lista: ${error.message}</p><p class="text-sm mt-1">Verifique se o servidor-ponte está a ser executado.</p>`;
+                    document.getElementById('patient-list-container').appendChild(errorDiv);
+                });
+        });
+    </script>
+</body>
+</html>

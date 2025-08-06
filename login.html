@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Zavtech Dicom Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-image: linear-gradient(to top, #f3e7e9 0%, #e3eeff 99%, #e3eeff 100%);
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center h-screen">
+    <div class="w-full max-w-md p-8 space-y-8 bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg border border-slate-200">
+        <div class="text-center">
+            <svg class="h-12 w-12 mx-auto" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#4f46e5"/>
+                        <stop offset="100%" stop-color="#3b82f6"/>
+                    </linearGradient>
+                </defs>
+                <circle cx="50" cy="50" r="50" fill="url(#logoGradient)"/>
+                <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Inter, sans-serif" font-size="40" font-weight="bold" fill="white">ZT</text>
+            </svg>
+            <h2 class="mt-6 text-3xl font-bold text-slate-800">Zavtech Viewer</h2>
+            <p class="mt-2 text-slate-500">Por favor, insira as suas credenciais do Orthanc.</p>
+        </div>
+        <form id="login-form" class="mt-8 space-y-6">
+            <div class="space-y-4 rounded-md shadow-sm">
+                <div>
+                    <label for="username" class="sr-only">Utilizador</label>
+                    <input id="username" name="username" type="text" required class="w-full px-3 py-2 border border-slate-300 placeholder-slate-500 text-slate-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Utilizador">
+                </div>
+                <div>
+                    <label for="password" class="sr-only">Senha</label>
+                    <input id="password" name="password" type="password" required class="w-full px-3 py-2 border border-slate-300 placeholder-slate-500 text-slate-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Senha">
+                </div>
+            </div>
+            <div>
+                <button type="submit" id="login-button" class="group relative flex w-full justify-center rounded-md border border-transparent bg-blue-600 py-2 px-4 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                    Entrar
+                </button>
+            </div>
+            <p id="error-message" class="text-center text-sm text-red-600"></p>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorMessage = document.getElementById('error-message');
+            const loginButton = document.getElementById('login-button');
+
+            errorMessage.textContent = '';
+            loginButton.textContent = 'A verificar...';
+            loginButton.disabled = true;
+
+            try {
+                const response = await fetch('http://localhost:3000/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    localStorage.setItem('authToken', btoa(`${username}:${password}`));
+                    
+                    // Constrói o URL completo para o redirecionamento para evitar erros
+                    const currentUrl = window.location.href;
+                    const newUrl = currentUrl.substring(0, currentUrl.lastIndexOf('/') + 1) + 'lista-pacientes.html';
+                    window.location.href = newUrl;
+                } else {
+                    throw new Error(result.message || 'Credenciais inválidas.');
+                }
+            } catch (error) {
+                errorMessage.textContent = error.message;
+            } finally {
+                loginButton.textContent = 'Entrar';
+                loginButton.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

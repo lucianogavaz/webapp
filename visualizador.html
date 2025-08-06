@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador de Exames - Orthanc</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f0f2f5; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        /* Estilo para as notificações (toasts) */
+        .toast {
+            transition: opacity 0.5s, transform 0.5s;
+        }
+    </style>
+</head>
+<body class="flex h-screen antialiased text-gray-800">
+
+    <!-- NOVO: Container para as notificações -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 space-y-3"></div>
+
+    <!-- Main Container -->
+    <div class="flex flex-row h-full w-full overflow-hidden">
+
+        <!-- Sidebar with Exam List -->
+        <aside class="flex flex-col w-full sm:w-80 bg-white border-r border-gray-200 overflow-y-auto">
+            <div class="p-4 border-b border-gray-200">
+                <h1 class="text-xl font-bold text-gray-800 flex items-center">
+                    <i class="fas fa-server mr-3 text-blue-600"></i>
+                    Estudos do Orthanc
+                </h1>
+                <p class="text-sm text-gray-500 mt-1">Selecione um estudo para visualizar</p>
+            </div>
+            
+            <div class="p-4">
+                <div class="relative">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3"><i class="fas fa-search text-gray-400"></i></span>
+                    <input type="text" id="searchInput" class="w-full pl-10 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Buscar por paciente...">
+                </div>
+            </div>
+
+            <nav id="examList" class="flex-1 px-4 pb-4 space-y-2">
+                <div id="loading" class="text-center p-4 text-gray-500">
+                    <i class="fas fa-spinner fa-spin mr-2"></i>
+                    Buscando estudos no Orthanc...
+                </div>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area to Display Exam -->
+        <main class="flex-1 p-6 bg-gray-50 flex flex-col items-center justify-center">
+            <div id="examViewer" class="w-full h-full bg-white rounded-lg shadow-md flex flex-col items-center justify-center text-gray-500 transition-all duration-300">
+                <div id="placeholder" class="text-center">
+                    <i class="fas fa-file-image fa-4x text-gray-300"></i>
+                    <h2 class="mt-4 text-xl font-semibold">Nenhum estudo selecionado</h2>
+                    <p class="mt-1 text-sm">Por favor, selecione um estudo da lista à esquerda.</p>
+                </div>
+                
+                <div id="examContent" class="hidden w-full h-full p-4 flex flex-col">
+                    <div class="flex-shrink-0 pb-4 border-b mb-4">
+                        <h3 id="examTitle" class="text-lg font-bold text-gray-900"></h3>
+                        <p id="examDetails" class="text-sm text-gray-600"></p>
+                    </div>
+                    <div class="flex-grow flex items-center justify-center overflow-hidden">
+                        <img id="examImage" src="" alt="Visualização do Estudo" class="max-w-full max-h-full object-contain rounded-md">
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const examList = document.getElementById('examList');
+            const searchInput = document.getElementById('searchInput');
+            const placeholder = document.getElementById('placeholder');
+            const examContent = document.getElementById('examContent');
+            const examTitle = document.getElementById('examTitle');
+            const examDetails = document.getElementById('examDetails');
+            const examImage = document.getElementById('examImage');
+            const loadingIndicator = document.getElementById('loading');
+            const toastContainer = document.getElementById('toast-container');
+
+            window.allExams = [];
+
+            // NOVO: Função para mostrar notificações
+            const showToast = (message, type = 'success') => {
+                const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+                const icon = type === 'success' ? 'fa-check-circle' : 'fa-times-circle';
+
+                const toast = document.createElement('div');
+                toast.className = `toast flex items-center text-white p-4 rounded-lg shadow-lg opacity-0 transform translate-x-10`;
+                toast.classList.add(bgColor);
+                toast.innerHTML = `<i class="fas ${icon} mr-3"></i><p>${message}</p>`;
+                
+                toastContainer.appendChild(toast);
+
+                // Animação de entrada
+                setTimeout(() => {
+                    toast.classList.remove('opacity-0', 'translate-x-10');
+                }, 100);
+
+                // Animação de saída
+                setTimeout(() => {
+                    toast.classList.add('opacity-0');
+                    toast.addEventListener('transitionend', () => toast.remove());
+                }, 5000); // A notificação desaparece após 5 segundos
+            };
+
+            // NOVO: Função para verificar o status das conexões
+            const checkServerStatus = async () => {
+                try {
+                    const response = await fetch('http://localhost:3000/api/status');
+                    const statuses = await response.json();
+
+                    statuses.forEach(s => {
+                        if (s.status === 'success') {
+                            showToast(`Conexão ${s.type} (porta ${s.port}) realizada com sucesso!`, 'success');
+                        } else {
+                            showToast(`Falha na conexão ${s.type} (porta ${s.port}).`, 'error');
+                        }
+                    });
+                } catch (error) {
+                    showToast('Não foi possível conectar ao servidor-ponte (localhost:3000).', 'error');
+                }
+            };
+
+            const renderExamList = (exams) => {
+                examList.innerHTML = '';
+                if (exams.length === 0) {
+                    examList.innerHTML = `<div class="text-center p-4 text-gray-500">Nenhum estudo encontrado.</div>`;
+                    return;
+                }
+                exams.forEach(exam => {
+                    const examElement = document.createElement('a');
+                    examElement.href = '#';
+                    examElement.className = 'flex items-center p-3 text-sm text-gray-700 bg-gray-50 rounded-lg hover:bg-blue-100 transition-colors duration-200';
+                    examElement.dataset.examData = JSON.stringify(exam);
+                    examElement.innerHTML = `<i class="fas fa-file-medical w-6 text-center text-blue-500"></i><div class="ml-3 overflow-hidden"><p class="font-semibold truncate">${exam.patient}</p><p class="text-xs text-gray-500 truncate">${exam.type} - ${exam.date}</p></div>`;
+                    examElement.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const clickedExamData = JSON.parse(e.currentTarget.dataset.examData);
+                        displayExam(clickedExamData);
+                        document.querySelectorAll('#examList a').forEach(el => el.classList.remove('bg-blue-100', 'font-bold'));
+                        e.currentTarget.classList.add('bg-blue-100', 'font-bold');
+                    });
+                    examList.appendChild(examElement);
+                });
+            };
+
+            const displayExam = (exam) => {
+                placeholder.classList.add('hidden');
+                examContent.classList.remove('hidden');
+                examContent.classList.add('flex');
+                examTitle.textContent = `${exam.type} - ${exam.patient}`;
+                examDetails.textContent = `Data do Estudo: ${exam.date}`;
+                examImage.src = `http://localhost:3000/api/preview/${exam.previewInstanceId}`;
+                examImage.onerror = () => {
+                    examImage.src = 'https://placehold.co/800x600/f0f0f0/FF0000?text=Erro+ao+carregar+preview';
+                };
+            };
+            
+            const fetchAndRenderExams = async () => {
+                loadingIndicator.style.display = 'block';
+                examList.innerHTML = `<div id="loading" class="text-center p-4 text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Buscando estudos no Orthanc...</div>`;
+                try {
+                    const response = await fetch('http://localhost:3000/api/studies');
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.message || `Erro na rede: ${response.statusText}`);
+                    }
+                    const exams = await response.json();
+                    window.allExams = exams; 
+                    renderExamList(exams);
+                } catch (error) {
+                    console.error("Falha ao buscar estudos:", error);
+                    examList.innerHTML = `<div class="text-center p-4 text-red-500"><strong>Falha ao carregar estudos.</strong><br><span class="text-sm">${error.message}</span></div>`;
+                } finally {
+                    loadingIndicator.style.display = 'none';
+                }
+            };
+
+            searchInput.addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+                const filteredExams = window.allExams.filter(exam => exam.patient.toLowerCase().includes(searchTerm));
+                renderExamList(filteredExams);
+            });
+
+            // Carregamento inicial
+            checkServerStatus(); // Verifica o status primeiro
+            fetchAndRenderExams(); // Depois busca os exames
+        });
+    </script>
+</body>
+</html>

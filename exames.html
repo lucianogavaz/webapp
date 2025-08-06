@@ -1,0 +1,41 @@
+            // Função para buscar e renderizar os exames do SERVIDOR REAL
+               const fetchAndRenderExams = async () => {
+    loadingIndicator.style.display = 'block';
+    examList.innerHTML = ''; // Limpa a lista para mostrar o loading
+
+    try {
+        // Faz a chamada para a API do seu servidor local
+        const response = await fetch('http://localhost:3000/api/exames');
+        
+        if (!response.ok) {
+            throw new Error(`Erro na rede: ${response.statusText}`);
+        }
+        
+        const exams = await response.json();
+        
+        // Guarda os exames globalmente para a busca funcionar
+        window.allExams = exams; 
+        
+        renderExamList(exams);
+
+    } catch (error) {
+        console.error("Falha ao buscar exames:", error);
+        examList.innerHTML = `<div class="text-center p-4 text-red-500">Falha ao carregar exames do servidor.</div>`;
+    } finally {
+        loadingIndicator.style.display = 'none';
+    }
+};
+
+// Também atualize a função de busca para usar os dados do servidor
+searchInput.addEventListener('input', (e) => {
+    const searchTerm = e.target.value.toLowerCase();
+    // Usa a lista de exames guardada em window.allExams
+    const allExams = window.allExams || []; 
+    const filteredExams = allExams.filter(exam => 
+        exam.patient.toLowerCase().includes(searchTerm)
+    );
+    renderExamList(filteredExams);
+});
+
+// É preciso definir window.allExams inicialmente
+window.allExams = [];

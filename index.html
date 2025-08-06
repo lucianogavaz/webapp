@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zavtech Dicom Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Biblioteca para gerar PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        .pagination-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        input:focus, select:focus { --tw-ring-color: #0d9488; /* Teal-500 */ }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
+        .modal-content { width: 90%; max-width: 800px; }
+        .dicom-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; max-height: 60vh; display: block; overflow-y: auto; }
+        .dicom-table th, .dicom-table td { padding: 8px; border: 1px solid #ddd; }
+        .dicom-table th { position: sticky; top: 0; }
+    </style>
+</head>
+<body class="antialiased bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-300 transition-colors duration-300">
+
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+
+    <div class="container mx-auto max-w-5xl p-4 sm:p-6 lg:p-8">
+        <header class="mb-10 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <svg class="h-12 w-12" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                     <defs><linearGradient id="logoGradientPortal" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#0d9488"/><stop offset="100%" stop-color="#059669"/></linearGradient></defs>
+                    <circle cx="50" cy="50" r="50" fill="url(#logoGradientPortal)"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Inter, sans-serif" font-size="40" font-weight="bold" fill="white">ZT</text>
+                </svg>
+                <div>
+                    <h1 class="text-3xl font-bold text-slate-800 dark:text-white">Zavtech</h1>
+                    <p class="text-slate-500 dark:text-slate-400 text-sm">Portal de Estudos DICOM</p>
+                </div>
+            </div>
+            <button id="theme-toggle-btn" class="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 h-10 w-10 rounded-full flex items-center justify-center transition-colors duration-300">
+                <i id="theme-icon" class="fa-solid"></i>
+            </button>
+        </header>
+        <div class="mb-8 p-6 bg-white dark:bg-slate-800 rounded-2xl shadow-md border border-slate-200 dark:border-slate-700">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div class="md:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                        <label for="search-input" class="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">Pesquisar Paciente</label>
+                        <div class="relative"><span class="absolute inset-y-0 left-0 flex items-center pl-3"><i class="fa-solid fa-search text-slate-400"></i></span><input type="text" id="search-input" placeholder="Nome ou ID..." class="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 rounded-lg focus:outline-none focus:ring-2"></div>
+                    </div>
+                    <div>
+                        <label for="modality-filter" class="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">Modalidade</label>
+                        <select id="modality-filter" class="w-full pr-4 py-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 rounded-lg focus:outline-none focus:ring-2"><option value="">Todas</option></select>
+                    </div>
+                    <div>
+                        <label for="date-filter" class="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">Data do Exame</label>
+                        <input type="date" id="date-filter" class="w-full pr-4 py-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 rounded-lg focus:outline-none focus:ring-2">
+                    </div>
+                </div>
+                <div class="flex items-end">
+                    <button id="open-upload-modal-btn" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-upload"></i> Upload DICOM
+                    </button>
+                </div>
+            </div>
+        </div>
+        <main id="patient-list-container">
+            <div id="loading-state" class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-4xl text-teal-500"></i><p class="mt-3 text-slate-500 dark:text-slate-400">A carregar estudos...</p></div>
+            <div id="empty-state" class="hidden text-center py-10 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700"><i class="fa-solid fa-folder-open text-4xl text-slate-400"></i><p class="mt-3 text-slate-500 dark:text-slate-400">Nenhum paciente encontrado.</p></div>
+            <div id="patient-list" class="space-y-5"></div>
+        </main>
+        <footer id="pagination-controls" class="hidden mt-8 flex items-center justify-between">
+            <button id="prev-page-btn" class="pagination-btn bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-medium py-2 px-4 rounded-lg inline-flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700"><i class="fa-solid fa-arrow-left"></i> Anterior</button>
+            <span id="page-info" class="text-sm font-semibold text-slate-600 dark:text-slate-400"></span>
+            <button id="next-page-btn" class="pagination-btn bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-medium py-2 px-4 rounded-lg inline-flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700">Próxima <i class="fa-solid fa-arrow-right"></i></button>
+        </footer>
+    </div>
+    
+    <!-- Modais -->
+    <div id="details-modal" class="modal">
+        <div class="modal-content bg-white dark:bg-slate-800 rounded-lg">
+            <div class="modal-header border-slate-200 dark:border-slate-700"><h2 id="modal-title" class="text-xl font-bold text-slate-800 dark:text-white"></h2><span class="close-btn details-close text-slate-400 dark:text-slate-500">&times;</span></div>
+            <div id="modal-text" class="text-slate-600 dark:text-slate-400"></div>
+        </div>
+    </div>
+    <div id="report-modal" class="modal">
+        <div class="modal-content bg-white dark:bg-slate-800 rounded-lg">
+            <div class="modal-header border-slate-200 dark:border-slate-700"><h2 id="report-modal-title" class="text-xl font-bold text-slate-800 dark:text-white"></h2><span class="close-btn report-close text-slate-400 dark:text-slate-500">&times;</span></div>
+            <div id="report-modal-body" class="mt-4">
+                <textarea id="report-textarea" class="w-full h-64 p-3 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 rounded-lg focus:outline-none focus:ring-2" placeholder="Digite o laudo aqui..."></textarea>
+                <input type="password" id="pdf-password" class="w-full mt-4 px-3 py-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 rounded-lg focus:outline-none focus:ring-2" placeholder="Senha para o PDF (opcional)">
+                <div class="flex justify-end items-center gap-4 mt-4">
+                    <button id="email-report-btn" class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2">
+                        <i class="fa-solid fa-paper-plane"></i> Enviar por Email
+                    </button>
+                    <button id="save-report-btn" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center gap-2">
+                        <i class="fa-solid fa-file-pdf"></i> Gerar PDF
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="upload-modal" class="modal">
+        <div class="modal-content bg-white dark:bg-slate-800 rounded-lg">
+            <div class="modal-header border-slate-200 dark:border-slate-700">
+                <h2 class="text-xl font-bold text-slate-800 dark:text-white">Enviar Estudo DICOM</h2>
+                <span class="close-btn upload-close text-slate-400 dark:text-slate-500">&times;</span>
+            </div>
+            <div class="mt-4">
+                <label for="dicom-file-input" class="w-full flex flex-col items-center px-4 py-6 bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 rounded-lg shadow-lg tracking-wide uppercase border border-dashed border-slate-300 dark:border-slate-600 cursor-pointer hover:bg-teal-50 dark:hover:bg-slate-600">
+                    <i class="fa-solid fa-cloud-upload fa-3x"></i>
+                    <span class="mt-2 text-base leading-normal">Selecione os ficheiros</span>
+                    <input type='file' id="dicom-file-input" class="hidden" accept=".dcm" multiple />
+                </label>
+                <div id="file-name" class="mt-2 text-sm text-slate-500 dark:text-slate-400">Nenhum ficheiro selecionado.</div>
+                <div id="upload-status" class="mt-4 text-center"></div>
+                <div class="text-right mt-6">
+                    <button id="upload-btn" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50" disabled>
+                        <i class="fa-solid fa-paper-plane"></i> Enviar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const patientListDiv = document.getElementById('patient-list');
+            const loadingState = document.getElementById('loading-state');
+            const emptyState = document.getElementById('empty-state');
+            const searchInput = document.getElementById('search-input');
+            const modalityFilter = document.getElementById('modality-filter');
+            const dateFilter = document.getElementById('date-filter');
+            const paginationControls = document.getElementById('pagination-controls');
+            const prevPageBtn = document.getElementById('prev-page-btn');
+            const nextPageBtn = document.getElementById('next-page-btn');
+            const pageInfo = document.getElementById('page-info');
+            const themeToggleBtn = document.getElementById('theme-toggle-btn');
+            const themeIcon = document.getElementById('theme-icon');
+            const openUploadModalBtn = document.getElementById('open-upload-modal-btn');
+            const uploadModal = document.getElementById('upload-modal');
+            const closeUploadModalBtn = document.querySelector('.upload-close');
+            const dicomFileInput = document.getElementById('dicom-file-input');
+            const fileNameDiv = document.getElementById('file-name');
+            const uploadBtn = document.getElementById('upload-btn');
+            const uploadStatus = document.getElementById('upload-status');
+            const detailsModal = document.getElementById('details-modal');
+            const modalTitle = document.getElementById('modal-title');
+            const modalText = document.getElementById('modal-text');
+            const reportModal = document.getElementById('report-modal');
+            const reportModalTitle = document.getElementById('report-modal-title');
+            const reportTextarea = document.getElementById('report-textarea');
+            const saveReportBtn = document.getElementById('save-report-btn');
+            const closeDetailsModalBtn = document.querySelector('.details-close');
+            const closeReportModalBtn = document.querySelector('.report-close');
+            const pdfPasswordInput = document.getElementById('pdf-password');
+            const emailReportBtn = document.getElementById('email-report-btn');
+
+            let allStudiesData = [];
+            let currentPage = 1;
+            const patientsPerPage = 10;
+
+            const updateThemeIcon = () => {
+                if (document.documentElement.classList.contains('dark')) {
+                    themeIcon.classList.remove('fa-moon'); themeIcon.classList.add('fa-sun');
+                } else {
+                    themeIcon.classList.remove('fa-sun'); themeIcon.classList.add('fa-moon');
+                }
+            };
+            themeToggleBtn.addEventListener('click', () => {
+                document.documentElement.classList.toggle('dark');
+                localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+                updateThemeIcon();
+            });
+            updateThemeIcon();
+
+            const showDetailsModal = (title, content) => { modalTitle.textContent = title; modalText.innerHTML = content; detailsModal.style.display = 'flex'; };
+            const closeDetailsModal = () => { detailsModal.style.display = 'none'; };
+            const showReportModal = (title) => { reportModalTitle.textContent = title; reportTextarea.value = ''; pdfPasswordInput.value = ''; reportModal.style.display = 'flex'; };
+            const closeReportModal = () => { reportModal.style.display = 'none'; };
+            const showUploadModal = () => { uploadModal.style.display = 'flex'; };
+            const closeUploadModal = () => { uploadModal.style.display = 'none'; };
+
+            closeDetailsModalBtn.onclick = closeDetailsModal;
+            closeReportModalBtn.onclick = closeReportModal;
+            closeUploadModalBtn.onclick = closeUploadModal;
+            window.onclick = (event) => { 
+                if (event.target == detailsModal) closeDetailsModal();
+                if (event.target == reportModal) closeReportModal();
+                if (event.target == uploadModal) closeUploadModal();
+            };
+
+            openUploadModalBtn.onclick = showUploadModal;
+            dicomFileInput.onchange = () => {
+                if (dicomFileInput.files.length > 0) {
+                    fileNameDiv.textContent = `${dicomFileInput.files.length} ficheiro(s) selecionado(s).`;
+                    uploadBtn.disabled = false;
+                } else {
+                    fileNameDiv.textContent = 'Nenhum ficheiro selecionado.';
+                    uploadBtn.disabled = true;
+                }
+            };
+            uploadBtn.onclick = async () => {
+                const files = dicomFileInput.files;
+                if (files.length === 0) return;
+                uploadBtn.disabled = true;
+                let successCount = 0;
+                let errorCount = 0;
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    uploadStatus.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> A enviar ${i + 1} de ${files.length}...`;
+                    try {
+                        const fileBuffer = await file.arrayBuffer();
+                        const response = await fetch('http://localhost:3000/api/upload', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/dicom' },
+                            body: fileBuffer
+                        });
+                        if (!response.ok) errorCount++;
+                        else successCount++;
+                    } catch (error) {
+                        errorCount++;
+                    }
+                }
+                let finalMessage = `<span class="font-bold text-green-600 dark:text-green-400">Upload concluído!</span><br>${successCount} ficheiro(s) enviado(s) com sucesso.`;
+                if (errorCount > 0) {
+                    finalMessage += `<br><span class="text-red-600 dark:text-red-400">${errorCount} ficheiro(s) falharam.</span>`;
+                }
+                uploadStatus.innerHTML = finalMessage;
+                fetchStudies();
+                setTimeout(() => {
+                    closeUploadModal();
+                    uploadStatus.innerHTML = '';
+                    fileNameDiv.textContent = 'Nenhum ficheiro selecionado.';
+                    dicomFileInput.value = '';
+                    uploadBtn.disabled = false;
+                }, 4000);
+            };
+
+            const openInOhif = (studyInstanceUids) => {
+                if (!studyInstanceUids || studyInstanceUids === 'undefined') {
+                    alert('Este paciente não tem estudos com StudyInstanceUID para serem abertos no visualizador.');
+                    return;
+                }
+                const ohifUrl = `http://192.168.0.13:8042/ohif/viewer?StudyInstanceUIDs=${studyInstanceUids}`;
+                window.open(ohifUrl, '_blank');
+            };
+            
+            const handleDetailsClick = async (orthancPatientId, patientName) => {
+                showDetailsModal(`Detalhes de ${patientName}`, 'A carregar... <i class="fas fa-spinner fa-spin"></i>');
+                try {
+                    const response = await fetch(`http://localhost:3000/api/patient/${orthancPatientId}`);
+                    if (!response.ok) throw new Error(`Erro ao buscar detalhes: ${response.status}`);
+                    const details = await response.json();
+                    if (!details || !details.Tags) throw new Error("A resposta do servidor não contém as tags DICOM esperadas.");
+                    
+                    const desiredTags = {
+                        '0010,0010': 'Nome do Paciente', '0010,0020': 'ID do Paciente',
+                        '0010,0030': 'Data de Nascimento', '0010,0040': 'Sexo do Paciente'
+                    };
+                    let tagsHtml = '<table class="dicom-table bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"><thead><tr class="bg-slate-50 dark:bg-slate-700"><th class="border-slate-200 dark:border-slate-600">Descrição</th><th class="border-slate-200 dark:border-slate-600">Valor</th></tr></thead><tbody>';
+                    for (const tagCode in desiredTags) {
+                        const displayName = desiredTags[tagCode];
+                        const tagData = details.Tags[tagCode];
+                        const tagValue = tagData ? tagData.Value : 'Não informado';
+                        tagsHtml += `<tr class="border-slate-200 dark:border-slate-700"><td>${displayName}</td><td>${tagValue}</td></tr>`;
+                    }
+                    tagsHtml += '</tbody></table>';
+                    modalText.innerHTML = tagsHtml;
+                } catch (error) {
+                    modalText.textContent = `Falha ao carregar detalhes: ${error.message}`;
+                }
+            };
+            
+            const handleCreateReportClick = (patientData) => {
+                showReportModal(`Criar Laudo para ${patientData.name}`);
+                saveReportBtn.onclick = () => generateReportPDF(patientData);
+                emailReportBtn.onclick = () => handleSendEmailClick(patientData);
+            };
+            
+            const handleViewReportsClick = async (patientData) => {
+                showDetailsModal(`Laudos de ${patientData.name}`, 'A buscar laudos... <i class="fas fa-spinner fa-spin"></i>');
+                let reportsHtml = '<ul class="list-disc pl-5">';
+                let foundReports = 0;
+                try {
+                    for (const study of patientData.studies) {
+                        if (study.hasPdfReport) {
+                            const response = await fetch(`http://localhost:3000/api/study/${study.id}/reports`);
+                            const reports = await response.json();
+                            reports.forEach(report => {
+                                foundReports++;
+                                reportsHtml += `<li class="mb-2"><a href="http://localhost:3000/api/instance/${report.id}/pdf" target="_blank" class="text-teal-600 dark:text-teal-400 hover:underline">Laudo de ${study.type} (${report.date})</a></li>`;
+                            });
+                        }
+                    }
+                    if (foundReports === 0) {
+                        reportsHtml = '<p>Nenhum laudo em PDF encontrado para este paciente.</p>';
+                    } else {
+                        reportsHtml += '</ul>';
+                    }
+                    modalText.innerHTML = reportsHtml;
+                } catch (error) {
+                    modalText.textContent = `Falha ao carregar laudos: ${error.message}`;
+                }
+            };
+
+            const generateReportPDF = (patientData) => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                const reportText = reportTextarea.value;
+                const pdfPassword = pdfPasswordInput.value;
+                const patientName = patientData.name;
+                const patientId = patientData.studies[0]?.patientId || 'N/A';
+                const studies = patientData.studies;
+
+                doc.setFontSize(22); doc.setFont('helvetica', 'bold');
+                doc.text('Zavtech', 105, 20, { align: 'center' });
+                doc.setFontSize(16); doc.setFont('helvetica', 'normal');
+                doc.text('Laudo de Exames do Paciente', 105, 30, { align: 'center' });
+                doc.setLineWidth(0.5); doc.line(20, 35, 190, 35);
+
+                doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+                doc.text('Paciente:', 20, 45); doc.setFont('helvetica', 'normal');
+                doc.text(patientName, 45, 45);
+                doc.setFont('helvetica', 'bold'); doc.text('ID:', 20, 52);
+                doc.setFont('helvetica', 'normal'); doc.text(patientId, 45, 52);
+
+                doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+                doc.text('Observações Médicas / Laudo', 20, 65);
+                doc.setLineWidth(0.2); doc.line(20, 67, 190, 67);
+                doc.setFontSize(12); doc.setFont('helvetica', 'normal');
+                const splitReport = doc.splitTextToSize(reportText, 170);
+                doc.text(splitReport, 20, 75);
+
+                let yPosition = 75 + (splitReport.length * 7) + 10;
+
+                doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+                doc.text('Lista de Estudos Realizados', 20, yPosition);
+                yPosition += 2;
+                doc.setLineWidth(0.2); doc.line(20, yPosition, 190, yPosition);
+                yPosition += 8;
+
+                doc.setFontSize(10);
+                studies.forEach((study, index) => {
+                    if (yPosition > 270) { doc.addPage(); yPosition = 20; }
+                    doc.setFont('helvetica', 'bold'); doc.text(`${index + 1}. Descrição:`, 20, yPosition);
+                    doc.setFont('helvetica', 'normal'); doc.text(study.type || 'N/A', 50, yPosition);
+                    doc.setFont('helvetica', 'bold'); doc.text('Data:', 20, yPosition + 5);
+                    doc.setFont('helvetica', 'normal'); doc.text(study.date || 'N/A', 50, yPosition + 5);
+                    doc.setFont('helvetica', 'bold'); doc.text('Modalidade:', 20, yPosition + 10);
+                    doc.setFont('helvetica', 'normal'); doc.text(study.modality || 'N/A', 50, yPosition + 10);
+                    yPosition += 20;
+                });
+
+                const today = new Date().toLocaleDateString('pt-BR');
+                doc.setFontSize(8); doc.setTextColor(150);
+                doc.text(`Laudo gerado em ${today} pelo Zavtech Dicom Viewer.`, 105, 285, { align: 'center' });
+
+                const saveOptions = {};
+                if (pdfPassword) {
+                    saveOptions.userPassword = pdfPassword;
+                }
+                doc.save(`laudo_${patientName.replace(/ /g, '_')}.pdf`, saveOptions);
+                
+                closeReportModal();
+            };
+
+            const handleSendEmailClick = (patientData) => {
+                const reportText = reportTextarea.value;
+                if (!reportText.trim()) {
+                    alert('O campo do laudo não pode estar vazio.');
+                    return;
+                }
+                const patientName = patientData.name;
+                const subject = encodeURIComponent(`Laudo do Paciente: ${patientName}`);
+                const body = encodeURIComponent(reportText);
+                
+                const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=&su=${subject}&body=${body}`;
+                window.open(gmailUrl, '_blank');
+            };
+
+            const renderPatientList = (patients) => {
+                patientListDiv.innerHTML = '';
+                if (Object.keys(patients).length === 0) {
+                    emptyState.classList.remove('hidden');
+                    paginationControls.classList.add('hidden');
+                    return;
+                }
+                emptyState.classList.add('hidden');
+                paginationControls.classList.remove('hidden');
+
+                for (const patientId in patients) {
+                    const patientData = patients[patientId];
+                    const hasAnyReport = patientData.studies.some(s => s.hasPdfReport);
+                    const allUidsForPatient = patientData.studies.map(s => s.studyInstanceUid).filter(Boolean).join(',');
+                    
+                    const viewReportsBtnHtml = hasAnyReport 
+                        ? `<button title="Ver Laudos Salvos" class="view-reports-btn bg-purple-500 hover:bg-purple-600 text-white font-bold h-10 w-10 rounded-full inline-flex items-center justify-center transition-all duration-300 transform hover:scale-110"><i class="fa-solid fa-file-lines"></i></button>`
+                        : '';
+
+                    const headerHtml = `<div class="card-header bg-slate-50 dark:bg-slate-800 p-5 flex justify-between items-center cursor-pointer"><span class="font-bold text-lg text-slate-800 dark:text-white">${patientData.name}</span><div class="flex items-center gap-4">${viewReportsBtnHtml}<button title="Criar Laudo" class="report-btn bg-green-500 hover:bg-green-600 text-white font-bold h-10 w-10 rounded-full inline-flex items-center justify-center transition-all duration-300 transform hover:scale-110"><i class="fa-solid fa-file-medical"></i></button><button title="Ver Detalhes do Paciente" class="details-btn bg-slate-500 hover:bg-slate-600 text-white font-bold h-10 w-10 rounded-full inline-flex items-center justify-center transition-all duration-300 transform hover:scale-110" data-orthanc-id="${patientData.orthancId}" data-patient-name="${patientData.name}"><i class="fa-solid fa-address-card"></i></button><button title="Abrir Dicom Viewer" class="viewer-btn bg-teal-500 hover:bg-teal-600 text-white font-bold h-10 w-10 rounded-full inline-flex items-center justify-center transition-all duration-300 transform hover:scale-110" data-study-uids="${allUidsForPatient}"><i class="fa-solid fa-eye"></i></button><i class="fas fa-chevron-down icon transition-transform dark:text-slate-400"></i></div></div>`;
+                    
+                    let studiesHtml = '';
+                    patientData.studies.forEach(study => {
+                        studiesHtml += `<div class="study-item flex items-center justify-between p-4 border-t border-slate-100 dark:border-slate-700"><div class="study-content"><p class="font-semibold text-slate-800 dark:text-slate-200">${study.type || 'Sem descrição'} <span class="text-xs font-medium text-teal-700 bg-teal-100 dark:text-teal-200 dark:bg-teal-900/50 px-2 py-1 rounded-full">${study.modality}</span></p><p class="text-sm text-slate-500 dark:text-slate-400">${study.date}</p></div></div>`;
+                    });
+
+                    const card = document.createElement('div');
+                    card.className = 'patient-card bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden fade-in';
+                    card.innerHTML = `${headerHtml}<div class="card-body max-h-0 overflow-hidden transition-all duration-500 ease-in-out">${studiesHtml.replace('border-t', '')}</div>`;
+                    
+                    patientListDiv.appendChild(card);
+                    card.querySelector('.card-header').addEventListener('click', (e) => {
+                        if (e.target.closest('button')) return;
+                        const cardBody = e.currentTarget.nextElementSibling;
+                        const icon = e.currentTarget.querySelector('.icon');
+                        if (cardBody.style.maxHeight && cardBody.style.maxHeight !== '0px') {
+                            cardBody.style.maxHeight = '0px'; icon.classList.remove('rotate-180');
+                        } else {
+                            cardBody.style.maxHeight = cardBody.scrollHeight + 'px'; icon.classList.add('rotate-180');
+                        }
+                    });
+                    
+                    card.querySelector('.viewer-btn').addEventListener('click', (e) => { e.stopPropagation(); openInOhif(e.currentTarget.dataset.studyUids); });
+                    card.querySelector('.details-btn').addEventListener('click', (e) => { e.stopPropagation(); handleDetailsClick(e.currentTarget.dataset.orthancId, e.currentTarget.dataset.patientName); });
+                    card.querySelector('.report-btn').addEventListener('click', (e) => { e.stopPropagation(); handleCreateReportClick(patientData); });
+                    const viewReportsBtn = card.querySelector('.view-reports-btn');
+                    if (viewReportsBtn) {
+                        viewReportsBtn.addEventListener('click', (e) => { e.stopPropagation(); handleViewReportsClick(patientData); });
+                    }
+                }
+            };
+            
+            const applyFiltersAndPagination = () => {
+                const searchTerm = searchInput.value.toLowerCase();
+                const modality = modalityFilter.value;
+                const date = dateFilter.value.replace(/-/g, '');
+
+                const filteredStudies = allStudiesData.filter(study => {
+                    const patientMatch = (study.patientName.toLowerCase().includes(searchTerm) || study.patientId.toLowerCase().includes(searchTerm));
+                    const modalityMatch = !modality || study.modality === modality;
+                    const dateMatch = !date || study.date === date;
+                    return patientMatch && modalityMatch && dateMatch;
+                });
+
+                const patients = filteredStudies.reduce((acc, study) => {
+                    const patientIdentifier = study.patientId;
+                    if (!acc[patientIdentifier]) {
+                        acc[patientIdentifier] = { name: study.patientName, orthancId: study.orthancId, studies: [] };
+                    }
+                    acc[patientIdentifier].studies.push(study);
+                    return acc;
+                }, {});
+
+                const patientIds = Object.keys(patients);
+                const totalPages = Math.ceil(patientIds.length / patientsPerPage);
+                if (currentPage > totalPages && totalPages > 0) currentPage = totalPages;
+
+                const paginatedPatientIds = patientIds.slice((currentPage - 1) * patientsPerPage, currentPage * patientsPerPage);
+                const paginatedPatients = {};
+                paginatedPatientIds.forEach(id => { paginatedPatients[id] = patients[id]; });
+
+                renderPatientList(paginatedPatients);
+                
+                pageInfo.textContent = `Página ${currentPage} de ${totalPages || 1}`;
+                prevPageBtn.disabled = currentPage === 1;
+                nextPageBtn.disabled = currentPage === totalPages || totalPages === 0;
+            };
+
+            [searchInput, modalityFilter, dateFilter].forEach(el => el.addEventListener('input', () => { currentPage = 1; applyFiltersAndPagination(); }));
+            prevPageBtn.addEventListener('click', () => { if (currentPage > 1) { currentPage--; applyFiltersAndPagination(); } });
+            nextPageBtn.addEventListener('click', () => { currentPage++; applyFiltersAndPagination(); });
+
+            const fetchStudies = () => {
+                loadingState.classList.remove('hidden');
+                emptyState.classList.add('hidden');
+                patientListDiv.innerHTML = '';
+
+                fetch('http://localhost:3000/api/studies')
+                    .then(res => {
+                        if (!res.ok) throw new Error(`Erro na rede: ${res.status}`);
+                        return res.json();
+                    })
+                    .then(studies => {
+                        if (!studies) return;
+                        loadingState.classList.add('hidden');
+                        allStudiesData = studies;
+                        
+                        const modalities = [...new Set(studies.map(s => s.modality).filter(m => m !== 'N/A'))];
+                        modalityFilter.innerHTML = '<option value="">Todas</option>';
+                        modalities.sort().forEach(modality => {
+                            const option = document.createElement('option');
+                            option.value = modality;
+                            option.textContent = modality;
+                            modalityFilter.appendChild(option);
+                        });
+
+                        applyFiltersAndPagination();
+                    })
+                    .catch(error => {
+                        loadingState.classList.add('hidden');
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'text-center py-10 bg-red-50 text-red-700 rounded-lg';
+                        errorDiv.innerHTML = `<i class="fa-solid fa-circle-exclamation text-3xl"></i><p class="mt-2">Erro ao carregar a lista: ${error.message}</p>`;
+                        patientListDiv.appendChild(errorDiv);
+                    });
+            };
+            
+            // --- Inicialização da Aplicação ---
+            fetchStudies();
+        });
+    </script>
+</body>
+</html>
