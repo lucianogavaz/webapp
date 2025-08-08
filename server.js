@@ -3,8 +3,10 @@
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
+const compression = require('compression');
 
 const app = express();
+const httpAgent = new http.Agent({ keepAlive: true });
 // Aumenta o limite para 50MB para acomodar ficheiros DICOM grandes
 app.use(express.raw({ type: 'application/dicom', limit: '50mb' }));
 app.use(express.json({ limit: '50mb' }));
@@ -20,6 +22,7 @@ const ORTHANC_CONFIG = {
 };
 
 app.use(cors());
+app.use(compression());
 
 function createHeaders(payload, contentType = 'application/json') {
     const headers = { 'Content-Type': contentType };
@@ -32,8 +35,9 @@ function createHeaders(payload, contentType = 'application/json') {
 }
 
 function requestOrthanc(options, payload = null) {
+    const requestOptionsWithAgent = { ...options, agent: httpAgent };
     return new Promise((resolve, reject) => {
-        const req = http.request(options, (res) => {
+        const req = http.request(requestOptionsWithAgent, (res) => {
             const isBinary = ['application/pdf', 'application/dicom'].includes(res.headers['content-type']);
             const body = [];
             res.on('data', (chunk) => body.push(chunk));
@@ -64,7 +68,8 @@ function proxyOrthancFile(req, res, path) {
         port: ORTHANC_CONFIG.port,
         path: path,
         method: 'GET',
-        headers: createHeaders()
+        headers: createHeaders(),
+        agent: httpAgent
     };
     const proxyReq = http.request(options, (proxyRes) => {
         if (proxyRes.statusCode >= 400) {
@@ -79,23 +84,47 @@ function proxyOrthancFile(req, res, path) {
 
 // Rota para buscar a lista de estudos
 app.get('/api/studies', async (req, res) => {
-    const findPayload = JSON.stringify({ "Level": "Study", "Query": { "PatientName": "*" }, "Expand": true });
+    // 1. Otimização: Não usar "Expand", que é lento. A busca padrão já traz os tags principais.
+    const findPayload = JSON.stringify({
+        "Level": "Study",
+        "Query": { "PatientName": "*" }
+    });
     const options = { host: ORTHANC_CONFIG.url, port: ORTHANC_CONFIG.port, path: '/tools/find', method: 'POST', headers: createHeaders(findPayload) };
-    
+
     try {
         const studiesFromOrthanc = await requestOrthanc(options, findPayload);
         const studiesArray = Array.isArray(studiesFromOrthanc) ? studiesFromOrthanc : [];
-        const formattedStudies = studiesArray.map(study => ({
-            id: study.ID,
-            studyInstanceUid: study.MainDicomTags.StudyInstanceUID,
-            patientId: study.PatientMainDicomTags.PatientID || 'ID Desconhecido',
-            patientName: study.PatientMainDicomTags.PatientName || 'Nome Desconhecido',
-            orthancPatientId: study.ParentPatient,
-            type: study.MainDicomTags.StudyDescription || 'Descrição não disponível',
-            date: study.MainDicomTags.StudyDate || 'Data não disponível',
-            modality: study.MainDicomTags.Modality || 'N/A',
-            hasPdfReport: study.Series.some(series => series.MainDicomTags && series.MainDicomTags.Modality === 'DOC')
+
+        // 2. Otimização: Verificar a existência de laudo PDF de forma mais eficiente e em paralelo.
+        const formattedStudies = await Promise.all(studiesArray.map(async (study) => {
+            const hasPdfReportPayload = JSON.stringify({
+                "Level": "Series",
+                "Query": {
+                    "ParentStudy": study.ID,
+                    "Modality": "DOC"
+                },
+                "Limit": 1 // Só precisamos saber se existe, não precisamos de todos.
+            });
+            const pdfCheckOptions = { host: ORTHANC_CONFIG.url, port: ORTHANC_CONFIG.port, path: '/tools/find', method: 'POST', headers: createHeaders(hasPdfReportPayload) };
+            const pdfSeries = await requestOrthanc(pdfCheckOptions, hasPdfReportPayload);
+
+            // Se o Orthanc não retornar PatientMainDicomTags, usamos um objeto vazio para evitar erros
+            const patientTags = study.PatientMainDicomTags || {};
+            const studyTags = study.MainDicomTags || {};
+
+            return {
+                id: study.ID,
+                studyInstanceUid: studyTags.StudyInstanceUID,
+                patientId: patientTags.PatientID || 'ID Desconhecido',
+                patientName: patientTags.PatientName || 'Nome Desconhecido',
+                orthancPatientId: study.ParentPatient,
+                type: studyTags.StudyDescription || 'Descrição não disponível',
+                date: studyTags.StudyDate || 'Data não disponível',
+                modality: studyTags.Modality || 'N/A',
+                hasPdfReport: pdfSeries.length > 0
+            };
         }));
+
         res.json(formattedStudies);
     } catch (error) {
         console.error('[SERVER ERROR] Falha na rota /api/studies:', error);
