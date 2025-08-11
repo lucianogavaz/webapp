@@ -74,11 +74,18 @@
                         <input type="date" id="date-filter" class="w-full pr-4 py-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 rounded-lg focus:outline-none focus:ring-2">
                     </div>
                 </div>
-                <div class="flex items-end">
+                <div class="flex items-end gap-2">
                     <button id="open-upload-modal-btn" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center justify-center gap-2">
                         <i class="fa-solid fa-upload"></i> Upload DICOM
                     </button>
+                    <button id="open-local-file-btn" class="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-folder-open"></i> Abrir Local
+                    </button>
                 </div>
+            </div>
+            <div id="local-file-path-container" class="mt-4 p-4 bg-slate-100 dark:bg-slate-800 rounded-lg hidden">
+                <p class="text-sm font-medium text-slate-600 dark:text-slate-300">Arquivo Local Selecionado:</p>
+                <p id="local-file-path" class="text-sm text-teal-600 dark:text-teal-400 font-mono"></p>
             </div>
         </div>
         <main id="patient-list-container">
@@ -525,6 +532,37 @@
             
             // --- Inicialização da Aplicação ---
             fetchStudies();
+
+            // --- Lógica da Prova de Conceito (PoC) para Abrir Arquivo Local ---
+            const openLocalFileBtn = document.getElementById('open-local-file-btn');
+            const localFilePathContainer = document.getElementById('local-file-path-container');
+            const localFilePathDisplay = document.getElementById('local-file-path');
+
+            openLocalFileBtn.addEventListener('click', async () => {
+                try {
+                    // Usa a API de diálogo do Tauri para abrir um seletor de arquivos
+                    const selectedPath = await window.__TAURI__.dialog.open({
+                        title: 'Selecione um arquivo DICOM',
+                        multiple: false,
+                        directory: false,
+                        filters: [{ name: 'DICOM', extensions: ['dcm'] }]
+                    });
+
+                    if (selectedPath) {
+                        // Se um arquivo foi selecionado, exibe o caminho
+                        localFilePathDisplay.textContent = selectedPath;
+                        localFilePathContainer.classList.remove('hidden');
+                    } else {
+                        // O usuário cancelou a seleção
+                        console.log('Seleção de arquivo local cancelada.');
+                        localFilePathContainer.classList.add('hidden');
+                    }
+                } catch (e) {
+                    console.error('Erro ao abrir o diálogo de arquivo:', e);
+                    localFilePathDisplay.textContent = `Erro: ${e}`;
+                    localFilePathContainer.classList.remove('hidden');
+                }
+            });
         });
     </script>
 </body>
