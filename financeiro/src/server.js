@@ -6,6 +6,7 @@ const cors = require('cors');
 const compression = require('compression');
 
 const { isConfigured } = require('./lib/bimerClient');
+const { isConfigured: isDbConfigured } = require('./lib/bimerDb');
 const empresasRouter = require('./routes/empresas');
 const agingRouter = require('./routes/aging');
 const dfcRouter = require('./routes/dfc');
@@ -19,7 +20,7 @@ app.use(compression());
 app.use(express.json());
 
 app.get('/api/status', (req, res) => {
-  res.json({ ok: true, bimerConfigurado: isConfigured() });
+  res.json({ ok: true, bimerConfigurado: isConfigured(), bimerDbConfigurado: isDbConfigured() });
 });
 
 app.use('/api/empresas', empresasRouter);

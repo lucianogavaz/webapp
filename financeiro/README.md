@@ -8,6 +8,8 @@ App interno do departamento financeiro, integrado à **Bimer Core API** (ERP Alt
 - `src/lib/bimerClient.js` — cliente HTTP para a Bimer API: autentica em `/auth/token` (usuário/senha), guarda o token em memória e renova automaticamente.
 - `src/lib/normalizarTitulo.js` — a Bimer API usa esquemas **diferentes** para título a pagar e título a receber (nomes de campo não batem entre si). Este módulo converte os dois para um formato único usado pelo resto do app.
 - `src/lib/aging.js`, `src/lib/dfc.js`, `src/lib/dre.js` — regras de agregação (aging list, projeção de fluxo de caixa e DRE gerencial) a partir dos títulos a pagar/receber normalizados, já que a Bimer API não expõe esses relatórios prontos.
+- `src/lib/bimerDb.js` — conexão **somente leitura** com o SQL Server do Bimer (usado só para BP/DRE contábil, ver seção própria abaixo). Recusa qualquer query que não comece com `SELECT`/`WITH`.
+- `scripts/explorar-schema-contabil.js` — script exploratório para descobrir os nomes de tabelas/colunas contábeis no banco (não lê dados, só metadados).
 - `src/routes/*` — endpoints `/api/empresas`, `/api/aging/contas-a-pagar`, `/api/aging/contas-a-receber`, `/api/dfc`, `/api/dre`.
 - `public/` — front-end estático (HTML/CSS/JS puro, sem build step), com o menu Contábil / Tesouraria / Módulo Orçamentário / Serviços especiais.
 
@@ -42,10 +44,29 @@ BIMER_API_URL=http://localhost:4000 BIMER_USERNAME=x BIMER_PASSWORD=x BIMER_CODI
 | Aging List do Contas a Pagar | ✅ Implementada |
 | Aging List do Contas a Receber (Inadimplência) | ✅ Implementada |
 | DRE – Demonstrativo do Resultado do Exercício | ✅ Implementada como **DRE Gerencial aproximada** (receitas x despesas por natureza de lançamento, regime de competência via data de vencimento) — **não é a DRE contábil oficial**, ver aviso abaixo |
-| DRE Multidimensional, BP, Indicadores | 🕒 Placeholder — BP exige dados contábeis (ativo/passivo/PL) que a Bimer API não expõe; requer confirmação se existe módulo/rota contábil separado |
+| BP – Balanço Patrimonial | 🚧 Em desenvolvimento via acesso direto ao SQL Server (ver seção "BP/DRE contábil via banco de dados" abaixo) |
+| DRE Multidimensional, Indicadores | 🕒 Placeholder |
 | DFC Multidimensional | 🕒 Placeholder — depende de definição dos eixos de análise (centro de custo x natureza x empresa) |
 | DRE Orçamentária, Fluxo de Caixa Orçamentário | 🕒 Placeholder — depende de onde o orçamento é cadastrado (a API atual não tem endpoint de orçamento) |
 | Visão de PowerBI, Visões de dashboards | 🕒 Placeholder — depende de workspace/relatórios do Power BI a embutir |
+
+## BP/DRE contábil via banco de dados
+
+A API REST do Bimer não expõe plano de contas nem lançamentos contábeis (ver observações abaixo), então BP e a DRE contábil oficial só são possíveis com acesso direto ao SQL Server onde a base do Bimer está instalada.
+
+**Isso exige cuidado**: é o banco de produção do ERP. Use, se possível, um login de banco com permissão **apenas de SELECT** (não o mesmo usuário/senha da aplicação Bimer). Nunca coloque a senha do banco em nenhum arquivo versionado — ela vai só no `financeiro/.env` local, que é ignorado pelo git.
+
+O schema interno do Bimer é proprietário e não documentado publicamente, então o fluxo para ligar essas telas é:
+
+1. Copie `.env.example` para `.env` e preencha `BIMER_DB_SERVER` (IP ou hostname), `BIMER_DB_DATABASE`, `BIMER_DB_USER`, `BIMER_DB_PASSWORD`.
+2. Rode o script exploratório, de dentro da rede onde o banco está acessível:
+   ```bash
+   cd financeiro
+   npm run explorar-schema-contabil
+   ```
+   Ele só lê metadados (`INFORMATION_SCHEMA` — nomes de tabelas/views/colunas), nunca dados financeiros reais. A saída fica em `financeiro/schema-contabil-descoberto.txt` (não versionado).
+3. Envie o conteúdo desse arquivo de volta para que as queries reais de BP e DRE contábil sejam escritas em cima das tabelas certas.
+4. Toda consulta ao banco passa por `queryLeitura()` em `src/lib/bimerDb.js`, que recusa qualquer coisa que não comece com `SELECT`/`WITH` — proteção contra escrita acidental no ERP.
 
 ## Observações importantes sobre a Bimer API
 

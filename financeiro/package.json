@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "mock:bimer": "node mock-bimer-server.js"
+    "mock:bimer": "node mock-bimer-server.js",
+    "explorar-schema-contabil": "node scripts/explorar-schema-contabil.js"
   },
   "engines": {
     "node": ">=18"
@@ -16,6 +17,7 @@
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "mssql": "^12.7.0"
   }
 }
