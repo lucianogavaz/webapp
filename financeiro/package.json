@@ -11,7 +11,8 @@
     "explorar-schema-contabil": "node scripts/explorar-schema-contabil.js",
     "explorar-plano-contas": "node scripts/explorar-plano-contas.js",
     "explorar-movimento-contabil": "node scripts/explorar-movimento-contabil.js",
-    "verificar-razao-contabil": "node scripts/verificar-razao-contabil.js"
+    "verificar-razao-contabil": "node scripts/verificar-razao-contabil.js",
+    "localizar-empresas": "node scripts/localizar-empresas.js"
   },
   "engines": {
     "node": ">=18"
