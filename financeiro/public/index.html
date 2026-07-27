@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Painel Financeiro</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">Painel Financeiro</div>
+    <nav id="menu"></nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <h1 id="viewTitle">Fluxo de Caixa</h1>
+      <div class="filters">
+        <label>
+          Empresa
+          <select id="filtroEmpresa"></select>
+        </label>
+        <label id="labelDataInicial">
+          De
+          <input type="date" id="filtroDataInicial" />
+        </label>
+        <label id="labelDataFinal">
+          Até
+          <input type="date" id="filtroDataFinal" />
+        </label>
+        <button id="btnAtualizar" class="btn-primario">Atualizar</button>
+      </div>
+    </header>
+
+    <div id="avisoConfig" class="aviso" hidden>
+      A API do Bimer ainda não está configurada neste servidor. Copie
+      <code>financeiro/.env.example</code> para <code>financeiro/.env</code> e preencha
+      <code>BIMER_API_URL</code>, <code>BIMER_USERNAME</code> e <code>BIMER_PASSWORD</code>, depois reinicie o servidor.
+    </div>
+
+    <main id="content" class="content"></main>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

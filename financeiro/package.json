@@ -1,0 +1,21 @@
+{
+  "name": "financeiro-app",
+  "version": "1.0.0",
+  "description": "Painel financeiro (Contábil, Tesouraria, Orçamento) integrado à Bimer Core API",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "mock:bimer": "node mock-bimer-server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "compression": "^1.8.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^5.1.0"
+  }
+}
