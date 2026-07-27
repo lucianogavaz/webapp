@@ -9,7 +9,8 @@
     "dev": "node --watch src/server.js",
     "mock:bimer": "node mock-bimer-server.js",
     "explorar-schema-contabil": "node scripts/explorar-schema-contabil.js",
-    "explorar-plano-contas": "node scripts/explorar-plano-contas.js"
+    "explorar-plano-contas": "node scripts/explorar-plano-contas.js",
+    "explorar-movimento-contabil": "node scripts/explorar-movimento-contabil.js"
   },
   "engines": {
     "node": ">=18"
