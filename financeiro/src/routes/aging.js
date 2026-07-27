@@ -2,6 +2,7 @@ const express = require('express');
 const { bimerGetTodasPaginas } = require('../lib/bimerClient');
 const { montarAgingList } = require('../lib/aging');
 const { resolverNomes } = require('../lib/pessoaCache');
+const { normalizarTitulosAPagar, normalizarTitulosAReceber } = require('../lib/normalizarTitulo');
 
 const router = express.Router();
 
@@ -17,15 +18,16 @@ function periodoPadrao(req) {
   };
 }
 
-async function montarResposta(path, req, res, next) {
+async function montarResposta(path, normalizar, req, res, next) {
   try {
     const { dataVencimentoInicial, dataVencimentoFinal, codigoEmpresa } = periodoPadrao(req);
 
-    const titulos = await bimerGetTodasPaginas(path, {
+    const titulosBrutos = await bimerGetTodasPaginas(path, {
       codigoEmpresa,
       dataVencimentoInicial,
       dataVencimentoFinal,
     });
+    const titulos = normalizar(titulosBrutos);
 
     const nomePessoaPorId = await resolverNomes(titulos.map((t) => t.identificadorPessoa));
     const resultado = montarAgingList(titulos, { nomePessoaPorId });
@@ -40,7 +42,11 @@ async function montarResposta(path, req, res, next) {
   }
 }
 
-router.get('/contas-a-pagar', (req, res, next) => montarResposta('/api/titulosAPagar', req, res, next));
-router.get('/contas-a-receber', (req, res, next) => montarResposta('/api/titulosAReceber', req, res, next));
+router.get('/contas-a-pagar', (req, res, next) =>
+  montarResposta('/api/titulosAPagar', normalizarTitulosAPagar, req, res, next)
+);
+router.get('/contas-a-receber', (req, res, next) =>
+  montarResposta('/api/titulosAReceber', normalizarTitulosAReceber, req, res, next)
+);
 
 module.exports = router;

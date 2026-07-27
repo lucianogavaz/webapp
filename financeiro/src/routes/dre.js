@@ -1,6 +1,6 @@
 const express = require('express');
-const { bimerGet, bimerGetTodasPaginas } = require('../lib/bimerClient');
-const { montarDFC } = require('../lib/dfc');
+const { bimerGetTodasPaginas } = require('../lib/bimerClient');
+const { montarDRE } = require('../lib/dre');
 const { normalizarTitulosAPagar, normalizarTitulosAReceber } = require('../lib/normalizarTitulo');
 
 const router = express.Router();
@@ -13,14 +13,12 @@ router.get('/', async (req, res, next) => {
     }
 
     const hoje = new Date();
-    const seisMesesFrente = new Date(hoje);
-    seisMesesFrente.setMonth(seisMesesFrente.getMonth() + 6);
+    const inicioDoAno = new Date(hoje.getFullYear(), 0, 1);
 
-    const dataInicial = req.query.dataInicial || hoje.toISOString().slice(0, 10);
-    const dataFinal = req.query.dataFinal || seisMesesFrente.toISOString().slice(0, 10);
+    const dataInicial = req.query.dataInicial || inicioDoAno.toISOString().slice(0, 10);
+    const dataFinal = req.query.dataFinal || hoje.toISOString().slice(0, 10);
 
-    const [saldosResp, titulosAReceberBrutos, titulosAPagarBrutos] = await Promise.all([
-      bimerGet(`/api/contas-bancarias/empresas/${codigoEmpresa}/saldos`),
+    const [titulosAReceberBrutos, titulosAPagarBrutos] = await Promise.all([
       bimerGetTodasPaginas('/api/titulosAReceber', {
         codigoEmpresa,
         dataVencimentoInicial: dataInicial,
@@ -33,15 +31,14 @@ router.get('/', async (req, res, next) => {
       }),
     ]);
 
-    const dfc = montarDFC({
-      saldosBancarios: saldosResp?.listaObjetos || [],
+    const dre = montarDRE({
       titulosAReceber: normalizarTitulosAReceber(titulosAReceberBrutos),
       titulosAPagar: normalizarTitulosAPagar(titulosAPagarBrutos),
       dataInicial,
       dataFinal,
     });
 
-    res.json({ codigoEmpresa, ...dfc });
+    res.json({ codigoEmpresa, ...dre });
   } catch (err) {
     next(err);
   }

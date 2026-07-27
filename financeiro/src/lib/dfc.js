@@ -2,14 +2,24 @@ function chaveMes(dataISO) {
   return dataISO.slice(0, 7); // YYYY-MM
 }
 
-function nomeNaturezaDoTitulo(titulo) {
-  const primeiroItem = (titulo.itens || [])[0];
-  return primeiroItem?.naturezaLancamento?.nome || 'Sem natureza definida';
+/**
+ * Decompõe o saldo em aberto de um título normalizado pelas naturezas de
+ * lançamento associadas, proporcionalmente ao peso de cada natureza no
+ * valor total do título (o saldo em aberto é um só, mas pode ter vindo de
+ * itens com naturezas diferentes).
+ */
+function decompoePorNatureza(tituloNormalizado) {
+  const totalNaturezas = tituloNormalizado.naturezas.reduce((s, n) => s + n.valor, 0);
+  if (totalNaturezas <= 0) {
+    return [{ nome: tituloNormalizado.naturezas[0]?.nome || 'Sem natureza definida', valor: tituloNormalizado.saldoEmAberto }];
+  }
+  const fator = tituloNormalizado.saldoEmAberto / totalNaturezas;
+  return tituloNormalizado.naturezas.map((n) => ({ nome: n.nome, valor: n.valor * fator }));
 }
 
 /**
  * Monta a projeção de Fluxo de Caixa (DFC) a partir dos saldos bancários
- * atuais e dos títulos a pagar/receber em aberto no período.
+ * atuais e dos títulos a pagar/receber (normalizados) em aberto no período.
  */
 function montarDFC({ saldosBancarios, titulosAReceber, titulosAPagar, dataInicial, dataFinal }) {
   const saldoAtual = saldosBancarios.reduce((soma, c) => soma + Number(c.valorSaldo || 0), 0);
@@ -20,16 +30,16 @@ function montarDFC({ saldosBancarios, titulosAReceber, titulosAPagar, dataInicia
 
   const acumular = (mapaMeses, titulos, tipo) => {
     for (const t of titulos) {
-      const saldo = Number(t.valor || 0) - Number(t.valorBaixado || 0);
-      if (saldo <= 0.005) continue;
+      if (t.saldoEmAberto <= 0.005) continue;
 
       const mes = chaveMes(t.dataVencimento);
       if (!mapaMeses.has(mes)) mapaMeses.set(mes, { mes, entradas: 0, saidas: 0 });
-      mapaMeses.get(mes)[tipo] += saldo;
+      mapaMeses.get(mes)[tipo] += t.saldoEmAberto;
 
-      const natureza = nomeNaturezaDoTitulo(t);
       const mapaNaturezas = tipo === 'entradas' ? naturezasEntrada : naturezasSaida;
-      mapaNaturezas.set(natureza, (mapaNaturezas.get(natureza) || 0) + saldo);
+      for (const { nome, valor } of decompoePorNatureza(t)) {
+        mapaNaturezas.set(nome, (mapaNaturezas.get(nome) || 0) + valor);
+      }
     }
   };
 

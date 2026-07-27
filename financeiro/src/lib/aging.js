@@ -18,17 +18,17 @@ function faixaPara(dias) {
 }
 
 /**
- * Recebe uma lista de títulos (a pagar ou a receber) no formato da Bimer API
- * e devolve o agrupamento em faixas de vencimento (aging list), considerando
- * apenas o saldo em aberto (valor - valorBaixado).
+ * Recebe uma lista de títulos já normalizados (ver normalizarTitulo.js) e
+ * devolve o agrupamento em faixas de vencimento (aging list), considerando
+ * apenas o saldo em aberto.
  */
-function montarAgingList(titulos, { nomePessoaPorId = {} } = {}) {
+function montarAgingList(titulosNormalizados, { nomePessoaPorId = {} } = {}) {
   const hoje = new Date();
   const linhas = [];
   const totalPorFaixa = Object.fromEntries(FAIXAS.map((f) => [f.chave, 0]));
 
-  for (const titulo of titulos) {
-    const saldo = Number(titulo.valor || 0) - Number(titulo.valorBaixado || 0);
+  for (const titulo of titulosNormalizados) {
+    const saldo = titulo.saldoEmAberto;
     if (saldo <= 0.005) continue; // já quitado
 
     const dias = diasEmAtraso(titulo.dataVencimento, hoje);
@@ -46,10 +46,9 @@ function montarAgingList(titulos, { nomePessoaPorId = {} } = {}) {
       diasEmAtraso: dias,
       faixa: faixa.chave,
       faixaRotulo: faixa.rotulo,
-      valorOriginal: Number(titulo.valor || 0),
-      valorBaixado: Number(titulo.valorBaixado || 0),
+      valorOriginal: titulo.valor,
       saldo,
-      situacao: titulo.situacaoAdministrativa?.nome || null,
+      situacao: titulo.situacao,
     });
   }
 

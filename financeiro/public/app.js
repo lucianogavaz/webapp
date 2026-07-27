@@ -2,7 +2,7 @@ const MENU = [
   {
     titulo: 'Contábil',
     itens: [
-      { chave: 'dre', nome: 'DRE – Demonstrativo do Resultado do Exercício' },
+      { chave: 'dre', nome: 'DRE – Demonstrativo do Resultado do Exercício', pronto: true },
       { chave: 'dre-multi', nome: 'DRE Multidimensional' },
       { chave: 'bp', nome: 'BP – Balanço Patrimonial' },
       { chave: 'indicadores', nome: 'Indicadores Econômicos/Financeiros' },
@@ -105,9 +105,9 @@ function selecionarView(chave) {
   });
 
   const item = achaItemMenu(chave);
-  els.viewTitle.textContent = item ? item.nome : chave;
+  els.viewTitle.textContent = item ? item.nome + (chave === 'dre' ? ' (visão gerencial)' : '') : chave;
 
-  const usaFiltroPeriodo = chave === 'dfc' || chave === 'aging-pagar' || chave === 'aging-receber';
+  const usaFiltroPeriodo = chave === 'dfc' || chave === 'aging-pagar' || chave === 'aging-receber' || chave === 'dre';
   els.labelDataInicial.style.display = usaFiltroPeriodo ? '' : 'none';
   els.labelDataFinal.style.display = usaFiltroPeriodo ? '' : 'none';
 
@@ -122,6 +122,11 @@ function selecionarView(chave) {
     const atras = new Date(hoje);
     atras.setFullYear(atras.getFullYear() - 2);
     els.filtroDataInicial.value = isoParaInput(atras);
+    els.filtroDataFinal.value = isoParaInput(hoje);
+  } else if (chave === 'dre') {
+    const hoje = new Date();
+    const inicioDoAno = new Date(hoje.getFullYear(), 0, 1);
+    els.filtroDataInicial.value = isoParaInput(inicioDoAno);
     els.filtroDataFinal.value = isoParaInput(hoje);
   }
 
@@ -326,6 +331,72 @@ async function renderDFC() {
   }
 }
 
+async function renderDRE() {
+  estadoCarregando();
+  const params = new URLSearchParams({
+    codigoEmpresa: state.empresa,
+    dataInicial: els.filtroDataInicial.value,
+    dataFinal: els.filtroDataFinal.value,
+  });
+
+  try {
+    const dados = await api(`/api/dre?${params.toString()}`);
+
+    const listaNatureza = (lista) =>
+      lista
+        .slice(0, 12)
+        .map((n) => `<tr><td>${n.nome}</td><td class="num">${moeda.format(n.valor)}</td></tr>`)
+        .join('') || '<tr><td colspan="2">Sem lançamentos no período.</td></tr>';
+
+    const porMesHtml = dados.porMes
+      .map(
+        (m) => `
+        <tr>
+          <td>${mesRotulo(m.mes)}</td>
+          <td class="num">${moeda.format(m.receitas)}</td>
+          <td class="num">${moeda.format(m.despesas)}</td>
+          <td class="num ${m.resultado >= 0 ? '' : 'negativo'}">${moeda.format(m.resultado)}</td>
+        </tr>`
+      )
+      .join('');
+
+    els.content.innerHTML = `
+      <div class="aviso" style="margin:0 0 20px">
+        Esta é uma <strong>DRE gerencial aproximada</strong>, calculada a partir dos títulos a pagar/receber
+        (regime de competência pela data de vencimento). Ela <strong>não</strong> é a DRE contábil oficial:
+        não considera depreciação, provisões, impostos sobre o lucro nem ajustes contábeis. Para o resultado
+        contábil oficial é necessário integrar com o módulo contábil do Bimer (não disponível nesta API).
+      </div>
+
+      <div class="kpi-row">
+        ${kpiCard('Receitas no período', moeda.format(dados.totalReceitas), 'positivo')}
+        ${kpiCard('Despesas no período', moeda.format(dados.totalDespesas), 'negativo')}
+        ${kpiCard('Resultado gerencial', moeda.format(dados.resultado), dados.resultado >= 0 ? 'positivo' : 'negativo')}
+        ${kpiCard('Margem gerencial', `${dados.margemPercentual}%`)}
+      </div>
+
+      <div class="panel">
+        <h2>Resultado por mês</h2>
+        <table>
+          <thead><tr><th>Mês</th><th class="num">Receitas</th><th class="num">Despesas</th><th class="num">Resultado</th></tr></thead>
+          <tbody>${porMesHtml || '<tr><td colspan="4">Sem lançamentos no período.</td></tr>'}</tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Receitas por natureza de lançamento</h2>
+        <table><tbody>${listaNatureza(dados.receitasPorNatureza)}</tbody></table>
+      </div>
+
+      <div class="panel">
+        <h2>Despesas por natureza de lançamento</h2>
+        <table><tbody>${listaNatureza(dados.despesasPorNatureza)}</tbody></table>
+      </div>`;
+  } catch (err) {
+    estadoErro(err.message);
+  }
+}
+
 function carregarView() {
   const chave = state.viewKey;
   if (!state.empresa) {
@@ -335,6 +406,7 @@ function carregarView() {
   if (chave === 'dfc') return renderDFC();
   if (chave === 'aging-pagar') return renderAging('contas-a-pagar');
   if (chave === 'aging-receber') return renderAging('contas-a-receber');
+  if (chave === 'dre') return renderDRE();
 
   const item = achaItemMenu(chave);
   renderPlaceholder(item ? item.nome : chave);

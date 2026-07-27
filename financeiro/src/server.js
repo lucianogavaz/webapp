@@ -9,6 +9,7 @@ const { isConfigured } = require('./lib/bimerClient');
 const empresasRouter = require('./routes/empresas');
 const agingRouter = require('./routes/aging');
 const dfcRouter = require('./routes/dfc');
+const dreRouter = require('./routes/dre');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -24,6 +25,7 @@ app.get('/api/status', (req, res) => {
 app.use('/api/empresas', empresasRouter);
 app.use('/api/aging', agingRouter);
 app.use('/api/dfc', dfcRouter);
+app.use('/api/dre', dreRouter);
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
